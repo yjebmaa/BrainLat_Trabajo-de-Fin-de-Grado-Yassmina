@@ -9,7 +9,7 @@ output: html_notebook
 
 ```{r setup, include=FALSE}
 library(svglite)
-knitr::opts_knit$set(root.dir = "C:/Users/yassm/OneDrive/Escritorio/TFG/DATOS/MRI data")
+knitr::opts_knit$set(root.dir = "directorio_censurado")
 ```
 
 ## 1. BrainLat Demographic:
