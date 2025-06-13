@@ -1,0 +1,131 @@
+---
+title: 'BrainLat: Preparación inicial'
+author: "Yassmina"
+date: "2025-03-09"
+output: html_notebook
+---
+
+# BRAINLAT: PREPARACIÓN INICIAL.
+
+```{r setup, include=FALSE}
+library(svglite)
+knitr::opts_knit$set(root.dir = "C:/Users/yassm/OneDrive/Escritorio/TFG/DATOS/MRI data")
+```
+
+## 1. BrainLat Demographic:
+
+### 1.1. Lectura de datos:
+```{r}
+demo = read.csv("BrainLat_Demographic_MRI.csv", sep = ";")
+demo$sex <- as.factor(demo$sex)
+demo$laterality <- as.factor(demo$laterality)
+demo$Age <- as.integer(demo$Age)
+head(demo)
+summary(demo)
+```
+
+En "laterality", aquel individuo con valor 4 debe ser un error, porque es una variable binaria según el diccionario que explica las variables. Lo eliminamos por el momento conservando los NAs.
+
+```{r}
+demo <- subset(demo, laterality != "4" | is.na(laterality))
+```
+
+### 1.2. Preparaciones:
+```{r}
+demo$country <- sub(".*-(..).*", "\\1", demo$MRI_ID)
+head(demo)
+table(demo$country)
+```
+```{r}
+library(dplyr)
+demo <- demo %>% filter(diagnosis != "MS")
+tail(demo)
+```
+```{r}
+write.csv(demo, "demo_PreparacionInicial.csv", row.names = FALSE) 
+```
+
+
+## 2. BrainLat Records:
+
+### 2.1. Lectura de datos:
+```{r}
+reco = read.csv("BrainLat_records_MRI.csv", sep = ";")
+reco$T1 <- as.factor(reco$T1)
+reco$Rest <- as.factor(reco$Rest)
+reco$DWI <- as.factor(reco$DWI)
+reco$MF <- as.factor(reco$MF)
+reco$eeg <- as.factor(reco$eeg)
+head(reco)
+summary(reco)
+```
+
+### 2.2. Preparaciones:
+```{r}
+reco$country <- sub(".*-(..).*", "\\1", reco$MRI_ID)
+head(reco)
+table(reco$country)
+```
+```{r}
+reco <- reco %>% filter(diagnosis != "MS")
+write.csv(reco, "reco_PreparacionInicial.csv", row.names = FALSE)
+```
+
+
+## 3. BrainLat Cognition:
+
+### 3.1. Lectura de datos:
+```{r}
+cogn = read.csv("BrainLat_Cognition_MRI.csv", sep = ";")
+head(cogn)
+summary(cogn)
+```
+
+### 3.2. Preparaciones:
+```{r}
+cogn$country <- sub(".*-(..).*", "\\1", cogn$MRI_ID)
+head(cogn)
+table(cogn$country)
+```
+```{r}
+cogn <- cogn %>% filter(diagnosis != "MS")
+write.csv(cogn, "cogn_PreparacionInicial.csv", row.names = FALSE)
+```
+
+### 3.3. Estudio datos disponibles:
+```{r}
+library(dplyr)
+library(tidyr)
+
+resumen_datos <- cogn %>%
+  group_by(diagnosis) %>%
+  summarise(across(everything(), 
+                   list(Disponibles = ~sum(!is.na(.)), 
+                        Faltantes = ~sum(is.na(.)))))
+  
+print(resumen_datos)
+```
+```{r}
+resumen_filtrado <- resumen_datos %>% 
+  select(diagnosis, moca_total_Disponibles, moca_total_Faltantes, ifs_total_score_Disponibles, ifs_total_score_Faltantes)
+
+print(resumen_filtrado)
+```
+```{r}
+filtrar_sujetos <- function(data, threshold = 80) {
+  data %>%
+    mutate(perc_disponible = rowMeans(!is.na(.)) * 100) %>% 
+    filter(perc_disponible >= threshold) %>%  
+    select(-perc_disponible)  
+}
+
+cogn_filtrado_sujetos <- filtrar_sujetos(cogn, 80)
+
+head(cogn_filtrado_sujetos)
+dim(cogn_filtrado_sujetos)
+```
+La cantidad de sujetos que tienen la mayoría de valores disponibles son unos 185 de 735.
+
+
+
+

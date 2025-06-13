@@ -1,0 +1,77 @@
+---
+title: 'BrainLat: Filtrando Cognition'
+author: "Yassmina"
+date: "2025-03-19"
+output: html_notebook
+---
+
+# BRAINLAT: FILTRANDO COGNITION.
+
+```{r setup, include=FALSE}
+library(svglite)
+knitr::opts_knit$set(root.dir = "C:/Users/yassm/OneDrive/Escritorio/TFG/DATOS/MRI data")
+```
+
+## 1. Lectura y concatenación datos:
+```{r}
+library(dplyr)
+
+# Solo nos interesa concatenar Records y Cognition para esta tarea, pero añadimos Demographic para dataset final
+demo = read.csv("demo_PreparacionInicial.csv", sep = ",")
+demo$sex <- as.factor(demo$sex)
+demo$laterality <- as.factor(demo$laterality)
+demo$Age <- as.integer(demo$Age)
+
+reco = read.csv("reco_PreparacionInicial.csv", sep = ",")
+reco$T1 <- as.factor(reco$T1)
+reco$Rest <- as.factor(reco$Rest)
+reco$DWI <- as.factor(reco$DWI)
+reco$MF <- as.factor(reco$MF)
+reco$eeg <- as.factor(reco$eeg)
+
+cogn = read.csv("cogn_PreparacionInicial.csv", sep = ",")
+```
+
+```{r}
+# Eliminamos columnas repetidas y casi vacías
+reco <- reco %>% select(-c(EEG_ID, diagnosis, country)) 
+cogn <- cogn %>% select(-c(EEG_ID, diagnosis, emotion.recog, country))
+merged_data <- merge(demo, cogn, by = "MRI_ID", all = TRUE)
+merged_data <- merge(merged_data, reco, by = "MRI_ID", all = TRUE)
+```
+
+## 2. Porcentaje de faltantes por diagnóstico:
+```{r}
+# Calculamos el % de faltantes en los resultados de los tests cognitivos
+missing_table <- merged_data %>%
+  group_by(diagnosis) %>%
+  summarise(porcentaje_faltantes = mean(rowMeans(is.na(across(9:27)))) * 100)
+
+print(missing_table)
+```
+
+## 3. Filtrado de observaciones:
+```{r}
+# Han de tener al menos el 75% de los resultados de los test cognitivos y al menos una MRI
+filtered <- merged_data %>%
+  filter(rowMeans(!is.na(across(9:27))) >= 0.75 &  
+         (T1 == 1 | Rest == 1 | DWI == 1))         
+
+head(filtered)
+```
+```{r}
+# Nos quedan 202 observaciones, veamos cuántas eeg hay y cuántas MRI hay
+sum(filtered$eeg == 1, na.rm = TRUE)
+sum(filtered$T1 == 1, na.rm = TRUE)
+sum(filtered$Rest == 1, na.rm = TRUE) # Es la que más nos interesa para enfermedades neurodegenerativas
+sum(filtered$DWI == 1, na.rm = TRUE)
+```
+```{r}
+# Veamos cuántos individuos de cada diagnóstico nos quedan tras el filtrado
+table(filtered$diagnosis)
+```
+Las clases están un poco desbalanceadas, pero no tanto, podemos aplicar técnicas para lidiar con los datos desbalanceados. Procedemos a guardar los datos finales filtrados.
+```{r}
+write.csv(filtered, "BrainLat_Filtrado.csv", row.names = FALSE)
+```
+

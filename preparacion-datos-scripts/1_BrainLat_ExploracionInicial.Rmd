@@ -1,0 +1,197 @@
+---
+title: 'BrainLat: Exploración inicial'
+author: "Yassmina"
+date: "2025-02-15"
+output: html_notebook
+---
+
+# BRAINLAT: EXPLORACIÓN INICIAL.
+
+```{r setup, include=FALSE}
+library(svglite)
+knitr::opts_knit$set(root.dir = "C:/Users/yassm/OneDrive/Escritorio/TFG/DATOS/MRI data")
+```
+
+## 1. BrainLat Demographic:
+
+### 1.1. Lectura de datos:
+```{r}
+demo = read.csv("BrainLat_Demographic_MRI.csv", sep = ";")
+demo$sex <- as.factor(demo$sex)
+demo$laterality <- as.factor(demo$laterality)
+demo$Age <- as.integer(demo$Age)
+head(demo)
+summary(demo)
+```
+
+En "laterality", aquel individuo con valor 4 debe ser un error, porque es una variable binaria según el diccionario que explica las variables. Lo eliminamos por el momento conservando los NAs.
+
+```{r}
+demo <- subset(demo, laterality != "4" | is.na(laterality))
+```
+
+### 1.2. Exploraciones:
+```{r}
+library(ggplot2)
+
+ggplot(demo, aes(x = laterality, y = Age, color = as.factor(sex))) +
+  geom_jitter(alpha = 0.6) +
+  labs(x = "Lateralidad", y = "Edad", title = "Edad según Sexo y Lateralidad") +
+  theme_minimal()
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(demo, aes(x = diagnosis, y = years_education, fill = diagnosis)) +
+  geom_boxplot() +
+  labs(x = "Diagnóstico", y = "Años de Educación", title = "Distribución de Años de Educación según Diagnóstico") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3") 
+```
+
+```{r}
+ggplot(demo, aes(x = diagnosis, fill = as.factor(sex))) +
+  geom_bar(position = "dodge") + 
+  labs(x = "Diagnóstico", y = "Frecuencia", fill = "Sexo", title = "Frecuencia de Diagnosis por Sexo") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#FF9999", "#66B3FF"))
+```
+
+```{r}
+library(dplyr)
+
+conteo <- demo %>%
+  group_by(diagnosis) %>%
+  summarise(n_unicos = n_distinct(EEG_ID))
+
+print(conteo)
+```
+Este se trata del conteo de cuántas personas por diagnóstico poseen una electroencefalografía.
+
+## 2. BrainLat Records:
+
+### 2.1. Lectura de datos:
+```{r}
+reco = read.csv("BrainLat_records_MRI.csv", sep = ";")
+reco$T1 <- as.factor(reco$T1)
+reco$Rest <- as.factor(reco$Rest)
+reco$DWI <- as.factor(reco$DWI)
+reco$MF <- as.factor(reco$MF)
+reco$eeg <- as.factor(reco$eeg)
+head(reco)
+summary(reco)
+```
+
+## 3. BrainLat Cognition:
+
+### 3.1. Lectura de datos:
+```{r}
+cogn = read.csv("BrainLat_Cognition_MRI.csv", sep = ";")
+head(cogn)
+summary(cogn)
+```
+
+### 3.2. Exploraciones:
+```{r}
+library(tidyr)
+
+# Filtrar las variables MOCA e IFS
+cogn_moca_ifs <- cogn %>%
+  select(starts_with("moca"), starts_with("ifs"))
+
+# 1. Histogramas de cada variable MOCA e IFS
+moca_vars <- names(cogn_moca_ifs)[grepl("^moca", names(cogn_moca_ifs))]
+ifs_vars <- names(cogn_moca_ifs)[grepl("^ifs", names(cogn_moca_ifs))]
+
+# MOCA: Histogramas
+par(mfrow = c(2, ceiling(length(moca_vars)/2)))  # Distribuir en varias filas
+for (var in moca_vars) {
+  hist(cogn_moca_ifs[[var]], main = paste("Histograma de", var), xlab = var, col = "skyblue", border = "black")
+}
+
+# IFS: Histogramas
+par(mfrow = c(2, ceiling(length(ifs_vars)/2)))
+for (var in ifs_vars) {
+  hist(cogn_moca_ifs[[var]], main = paste("Histograma de", var), xlab = var, col = "lightgreen", border = "black")
+}
+
+# 2. Boxplots para comparar distribución
+# MOCA
+cogn_moca_long <- cogn_moca_ifs %>%
+  select(all_of(moca_vars)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Valor")
+
+ggplot(cogn_moca_long, aes(x = Variable, y = Valor)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(title = "Boxplots de variables MOCA", x = "Variable", y = "Valor") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# IFS
+cogn_ifs_long <- cogn_moca_ifs %>%
+  select(all_of(ifs_vars)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Valor")
+
+ggplot(cogn_ifs_long, aes(x = Variable, y = Valor)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Boxplots de variables IFS", x = "Variable", y = "Valor") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 3. Correlación entre MOCA total e IFS total
+ggplot(cogn, aes(x = moca_total, y = ifs_total_score)) +
+  geom_point(color = "purple") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "Correlación entre MOCA Total e IFS Total", x = "MOCA Total", y = "IFS Total") +
+  theme_minimal()
+```
+
+```{r}
+# Filtrar variables MOCA e IFS junto a diagnosis
+cogn_moca_ifs <- cogn %>%
+  select(diagnosis, starts_with("moca"), starts_with("ifs"))
+
+moca_vars <- names(cogn_moca_ifs)[grepl("^moca", names(cogn_moca_ifs)) & names(cogn_moca_ifs) != "moca_total"]
+ifs_vars <- names(cogn_moca_ifs)[grepl("^ifs", names(cogn_moca_ifs)) & names(cogn_moca_ifs) != "ifs_total_score"]
+
+# 1. Boxplots: MOCA según diagnosis
+cogn_moca_long <- cogn_moca_ifs %>%
+  select(diagnosis, all_of(moca_vars)) %>%
+  pivot_longer(cols = -diagnosis, names_to = "Variable", values_to = "Valor")
+
+ggplot(cogn_moca_long, aes(x = diagnosis, y = Valor, fill = diagnosis)) +
+  geom_boxplot() +
+  facet_wrap(~ Variable, scales = "free") +
+  labs(title = "Variables MOCA según Diagnosis", x = "Diagnosis", y = "Valor") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 2. Boxplots: IFS según diagnosis
+cogn_ifs_long <- cogn_moca_ifs %>%
+  select(diagnosis, all_of(ifs_vars)) %>%
+  pivot_longer(cols = -diagnosis, names_to = "Variable", values_to = "Valor")
+
+ggplot(cogn_ifs_long, aes(x = diagnosis, y = Valor, fill = diagnosis)) +
+  geom_boxplot() +
+  facet_wrap(~ Variable, scales = "free") +
+  labs(title = "Variables IFS según Diagnosis", x = "Diagnosis", y = "Valor") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 3. Violin plots para visualizar densidad
+
+# MOCA
+ggplot(cogn_moca_long, aes(x = diagnosis, y = Valor, fill = diagnosis)) +
+  geom_violin() +
+  facet_wrap(~ Variable, scales = "free") +
+  labs(title = "Distribución de Variables MOCA según Diagnosis", x = "Diagnosis", y = "Valor") +
+  theme_minimal()
+
+# IFS
+ggplot(cogn_ifs_long, aes(x = diagnosis, y = Valor, fill = diagnosis)) +
+  geom_violin() +
+  facet_wrap(~ Variable, scales = "free") +
+  labs(title = "Distribución de Variables IFS según Diagnosis", x = "Diagnosis", y = "Valor") +
+  theme_minimal()
+```
+
+

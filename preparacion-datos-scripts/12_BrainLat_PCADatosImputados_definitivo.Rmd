@@ -1,0 +1,249 @@
+---
+title: 'BrainLat: PCA Datos Filtrados e Imputados (definitivo)'
+author: "Yassmina"
+date: "2025-05-23"
+output: html_notebook
+---
+
+# BRAINLAT: PCA DATOS FILTRADOS E IMPUTADOS (definitivo).
+
+```{r setup, include=FALSE}
+library(svglite)
+knitr::opts_knit$set(root.dir = "C:/Users/yassm/OneDrive/Escritorio/TFG/DATOS/MRI data")
+```
+
+## 1. Lectura y preparación datos:
+```{r}
+library(dplyr)
+
+data = read.csv("BrainLat_Imputado3.csv", sep = ";")
+data$sex <- as.numeric(data$sex)
+data$laterality <- as.numeric(data$laterality)
+data$Age <- as.integer(data$Age)
+
+data$T1 <- as.factor(data$T1)
+data$Rest <- as.factor(data$Rest)
+data$DWI <- as.factor(data$DWI)
+data$MF <- as.factor(data$MF)
+data$eeg <- as.factor(data$eeg)
+
+data <- data %>% select(-c(EEG_ID, EEG_path, T1, Rest, DWI, MF, eeg))
+head(data)
+summary(data)
+```
+
+```{r}
+descData = data.frame("variable" = colnames(data),
+                      "tipo" = c("categorical", "categorical", rep("numerical", 4), 
+                                 "categorical", "categorical", rep("numerical", 11)), stringsAsFactors = FALSE)
+rownames(descData) = descData$variable
+```
+
+## 2. Selección del número de PCs:
+```{r}
+library(FactoMineR)
+library(factoextra)
+
+res.pca = PCA(data, scale.unit = TRUE, graph = FALSE, ncp = 2, 
+              quali.sup = c(1,2,7,8))
+eig.val <- get_eigenvalue(res.pca)
+VPmedio = 100 * (1/nrow(eig.val))
+fviz_eig(res.pca, addlabels = TRUE) +
+  geom_hline(yintercept=VPmedio, linetype=2, color="red")
+```
+```{r}
+library(knitr)
+kable(eig.val[1:6,])
+```
+```{r}
+K = 4
+res.pca = PCA(data, scale.unit = TRUE, graph = FALSE, ncp = K, 
+              quali.sup = c(1,2,7,8))
+```
+
+## 3. Validación del modelo PCA:
+
+### 3.1 Detección de anómalos con T2-Hotelling:
+```{r}
+# Gráfico T2 Hotelling
+misScores = res.pca$ind$coord[,1:K]
+miT2 = colSums(t(misScores**2)/eig.val[1:K,1])
+I = nrow(data)
+F95 = K*(I**2 - 1)/(I*(I - K)) * qf(0.95, K, I-K)
+F99 = K*(I**2 - 1)/(I*(I - K)) * qf(0.99, K, I-K)
+
+plot(1:length(miT2), miT2, type = "p", xlab = "Observaciones", ylab = "T2")
+abline(h = F95, col = "orange", lty = 2, lwd = 2)
+abline(h = F99, col = "red3", lty = 2, lwd = 2)
+```
+```{r}
+anomalas = which(miT2 > F95)
+anomalas
+```
+```{r}
+# Score plots
+library(grid)
+library(gridExtra)
+
+p1 = fviz_pca_ind(res.pca, axes = c(1,2), geom = c("point"),
+                  habillage = factor(miT2 > F95))
+
+p2 = fviz_pca_ind(res.pca, axes = c(3,4), geom = c("point"), 
+                  habillage = factor(miT2 > F95))
+  
+grid.arrange(p1,p2, nrow = 1)
+```
+```{r}
+contribT2 = function (X, scores, loadings, eigenval, observ, cutoff = 2) {
+  # X is data matrix and must be centered (or centered and scaled if data were scaled)
+  misScoresNorm = t(t(scores**2) / eigenval)
+  misContrib = NULL
+  for (oo in observ) {
+    print(rownames(scores)[oo])
+    print(scores[oo,])
+    misPCs = which(as.numeric(misScoresNorm[oo,]) > cutoff)
+    lacontri = sapply(misPCs, function (cc) (scores[oo,cc]/eigenval[cc])*loadings[,cc]*X[oo,])
+    lacontri = rowSums((1*(sign(lacontri) == 1))*lacontri)
+    misContrib = cbind(misContrib, lacontri)
+  }
+  colnames(misContrib) = rownames(misScoresNorm[observ,])
+  return(misContrib)
+}
+```
+
+```{r}
+# Recuperamos los datos utilizados en el modelo PCA, centrados y escalados
+dataCE = data[,descData$tipo == "numerical"]
+dataCE = scale(dataCE, center = TRUE, scale = TRUE)
+X = as.matrix(dataCE)
+# Calculamos los loadings a partir de las coordenadas de las variables
+# ya que la librería FactoMineR nos devuelve los loadings ponderados 
+# por la importancia de cada componente principal.
+misLoadings = sweep(res.pca$var$coord, 2, sqrt(res.pca$eig[1:K,1]), FUN="/")
+# Calculamos las contribuciones
+mycontrisT2 = contribT2(X = X, scores = misScores, loadings = misLoadings, 
+                        eigenval = eig.val[1:K,1], observ = which.max(miT2),
+                        cutoff = 2)
+```
+
+Los anómalos no mostrados con gráficos son ignorados porque su valor anómalo es lateralidad y es porque hay muy pocos individuos con lateralidad izquierda.
+```{r}
+mycontrisT2 = contribT2(X = X, scores = misScores, loadings = misLoadings, 
+                        eigenval = eig.val[1:K,1], observ = 163,
+                        cutoff = 2)
+
+par(mar = c(10, 2.3, 3, 1))
+fila <- 163
+barplot(mycontrisT2[,1], las = 2,
+        main = paste0("Observación: ", rownames(data)[fila], 
+                     " | miT2 = ", round(miT2[fila], 4)))
+```
+
+### 3.2 Distancia al modelo (SCR)
+```{r}
+myE = X - misScores %*% t(misLoadings) 
+mySCR = rowSums(myE^2)  
+plot(1:length(mySCR), mySCR, type = "l", main = "Distancia al modelo", 
+     ylab = "SCR", xlab = "Observaciones", ylim = c(0,30))
+g = var(mySCR)/(2*mean(mySCR))
+h = (2*mean(mySCR)^2)/var(mySCR)
+chi2lim = g*qchisq(0.95, df = h)
+chi2lim99 = g*qchisq(0.99, df = h)
+abline(h = chi2lim, col = "orange", lty = 2, lwd = 2)
+abline(h = chi2lim99, col = "red3", lty = 2, lwd = 2)
+```
+```{r}
+## Función para calcular las contribuciones a la SCR
+ContriSCR = function(E, SCR) {
+  # E es la matriz de residuos del modelo 
+  # SCR es la suma de cuadrados residual
+  contribucion = NULL
+  for (j in 1:length(SCR)){
+    eind<-E[j,]
+    signo<-sign(eind)
+    contri<-(signo*(eind^2)/SCR[j])*100
+    contribucion<-rbind(contribucion,contri)
+  }
+  rownames(contribucion) = rownames(E)
+  return(contribucion)
+}
+## Calculamos las contribuciones de todas las observaciones
+mycontris = ContriSCR(E = myE, SCR = mySCR)
+## Gráfico para Special_K
+barplot(mycontris[177,],las=2, cex.names = 0.7,
+        main=c('Contribuciones a SCR para 177'))
+```
+
+## 4. Interpretación del modelo PCA:
+
+### 4.1. Gráficos de variables:
+```{r}
+library(factoextra)
+library(FactoMineR)
+
+fviz_pca_var(res.pca, axes = c(1,2), labelsize = 2, repel = TRUE, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
+fviz_pca_var(res.pca, axes = c(3,4), labelsize = 2, repel = TRUE, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
+```
+```{r}
+fviz_contrib(res.pca, choice = "var", axes = 1)
+```
+
+### 4.2. Gráficos de observaciones:
+```{r}
+# Individuos coloreados por país para las 4 primeras componentes principales
+fviz_pca_ind(res.pca, axes = c(1,2), geom = c("point"), 
+             habillage = "country", repel = TRUE, labelsize = 2)
+fviz_pca_ind(res.pca, axes = c(3,4), geom = c("point"), 
+             habillage = "country", repel = TRUE, labelsize = 2)
+```
+```{r}
+# Individuos coloreados por centro para las 4 primeras componentes principales
+fviz_pca_ind(res.pca, axes = c(1,2), geom = c("point"), 
+             habillage = "center", repel = TRUE, labelsize = 2)
+fviz_pca_ind(res.pca, axes = c(3,4), geom = c("point"), 
+             habillage = "center", repel = TRUE, labelsize = 2)
+```
+
+```{r}
+# Los individuos representados por las 4 PCs coloreados por país y por enfermedad
+fviz_pca_ind(res.pca, axes = c(1,2), geom = c("point"), repel = TRUE, labelsize = 2,
+             habillage = "country", addEllipses = TRUE)
+fviz_pca_ind(res.pca, axes = c(1,2), geom = c("point"), repel = TRUE, labelsize = 2, 
+             habillage = "diagnosis", addEllipses = TRUE)
+fviz_pca_ind(res.pca, axes = c(3:4), geom = c("point"), repel = TRUE, labelsize = 2,
+             habillage = "country", addEllipses = TRUE)
+fviz_pca_ind(res.pca, axes = c(3:4), geom = c("point"), repel = TRUE, labelsize = 2, 
+             habillage = "diagnosis", addEllipses = TRUE)
+
+```
+
+### 4.3. Biplot:
+```{r}
+fviz_pca_biplot(res.pca, axes = c(1,2), labelsize = 3,
+                label = "var", repel = TRUE, 
+                col.ind = data$diagnosis)
+fviz_pca_biplot(res.pca, axes = c(3,4), labelsize = 3,
+                label = "var", repel = TRUE, 
+                col.ind = data$diagnosis)
+```
+```{r}
+# Valores de los individuos según su ifs total
+fviz_pca_biplot(res.pca, axes = c(1,2), labelsize = 3,
+                label = "var", repel = TRUE, 
+                col.ind = data$ifs_total_score)
+```
+La variable que mejor explican la dimensión 1 es el ifs_total_score, a su vez, esta dimensión también separa muy bien las distintas enfermedades neurodegenerativas. Con los gráficos de este apartado 4.3 podemos observar que aquellos con menores valores en el total de los tests son precisamente aquellos con la demencia frontotemporal variante conductual (bvFTD), que es es una enfermedad neurodegenerativa que provoca cambios en la personalidad, el comportamiento social y la cognición. También se conoce como demencia frontotemporal o enfermedad de Pick. 
+Características:
+- Dificultad para controlar el comportamiento
+- Comportamientos impulsivos o socialmente inapropiados
+- Apatía
+- Disminución de la empatía, el juicio y el autocontrol
+- Dificultad para afrontar situaciones cotidianas
+
+Además de estos, los pacientes con alzheimer y parkinson también parecen poseer valores bajos al compartir una situación similar a los anteriores.
+
+
+
+

@@ -1,0 +1,104 @@
+---
+title: 'BrainLat: Tablas y ANOVA'
+author: "Yassmina"
+date: "2025-05-01"
+output: html_notebook
+---
+
+# BRAINLAT: TABLAS Y ANOVA.
+
+```{r setup, include=FALSE}
+library(svglite)
+knitr::opts_knit$set(root.dir = "C:/Users/yassm/OneDrive/Escritorio/TFG/DATOS/MRI data")
+```
+
+## 1. Lectura y preparación datos:
+```{r}
+library(dplyr)
+
+data = read.csv("BrainLat_Imputado.csv", sep = ";")
+data$sex <- as.factor(data$sex)
+data$laterality <- as.factor(data$laterality)
+data$Age <- as.integer(data$Age)
+
+data$T1 <- as.factor(data$T1)
+data$Rest <- as.factor(data$Rest)
+data$DWI <- as.factor(data$DWI)
+data$MF <- as.factor(data$MF)
+data$eeg <- as.factor(data$eeg)
+
+summary(data)
+```
+
+## 2. Creación variable "center":
+```{r}
+data$center <- gsub("^sub-([A-Za-z]{2,3}).*", "\\1", data$MRI_ID)
+data <- data %>% relocate(center, .after = 8)  # La colocamos en la posición 9
+str(data[, 1:10])  
+```
+
+## 3. Recuento de pacientes por país y centro:
+```{r}
+library(dplyr)
+library(tidyr)
+
+tabla_country <- data %>%
+  group_by(country, diagnosis) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = diagnosis, values_from = n, values_fill = 0)
+
+print(tabla_country)
+
+tabla_center <- data %>%
+  group_by(center, diagnosis) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = diagnosis, values_from = n, values_fill = 0)
+
+print(tabla_center)
+```
+
+## 4. ANOVA de la edad frente al país y frente al centro:
+```{r}
+data$country <- as.factor(data$country)
+data$center <- as.factor(data$center)
+str(data[, c("Age", "country", "center")])
+```
+
+Si el p-valor es < 0.05, hay diferencias significativas en edad entre países. Queremos ver si un país ha recogido datos de la gente más mayor o más joven ya que eso explicaría el por qué ciertos países tienen a todos los pacientes con parkinson u otro.
+```{r}
+anova_country <- aov(Age ~ country, data = data)
+summary(anova_country)
+TukeyHSD(anova_country)  # Comparaciones por pares de países
+```
+
+```{r}
+anova_center <- aov(Age ~ center, data = data)
+summary(anova_center)
+TukeyHSD(anova_center)  # Comparaciones por pares de centros
+```
+
+```{r}
+# ANOVA de dos factores (sin interacción)
+anova_two_way <- aov(Age ~ country + center, data = data)
+summary(anova_two_way)
+
+# ANOVA con interacción (para ver si country y center se influyen)
+anova_interaction <- aov(Age ~ country * center, data = data)
+summary(anova_interaction)
+```
+
+```{r}
+# Normalidad de residuos
+shapiro.test(residuals(anova_country))  # Debe ser p > 0.05
+# Homogeneidad de varianzas (Levene's test)
+car::leveneTest(Age ~ country, data = data)  # Debe ser p > 0.05
+# No se cumple la segunda, usamos Kruskal-Wallis (no paramétrico)
+kruskal.test(Age ~ country, data = data)
+```
+Por tanto, se podría concluir que sí hay diferencias significativas de edades entre países y entre centros.
+
+## 5. Guardando datos:
+```{r}
+write.csv(data, "BrainLat_Imputado.csv", row.names = FALSE)
+```
+
