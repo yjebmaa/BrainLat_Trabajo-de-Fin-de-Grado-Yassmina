@@ -1,4 +1,4 @@
-# BrainLat---Trabajo-de-Fin-de-Grado-Yassmina
+# BrainLat_Trabajo-de-Fin-de-Grado-Yassmina
 Este repositorio contiene todos los scripts y modelos estadísticos desarrollados, entrenados y guardados a lo largo del trabajo "Integración de datos de neuroimagen y de tests cognitivos para el estudio de enfermedades neurodegenerativas a partir del proyecto BrainLat". Más detalles al respecto de gran relevancia se encuentran en el README file.
 
 Por un lado, la fuente de datos utilizada para llevar a cabo este proyecto es el BrainLat Dataset, un conjunto de datos de acceso público compartido en la plataforma Synapse con el objetivo de que futuros investigadores puedan consultarlo libremente, siempre reconociendo adecuadamente a sus creadores. El enlace al repositorio es el siguiente:
